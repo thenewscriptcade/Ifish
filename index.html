@@ -1,0 +1,1453 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>I Fish - Next-Gen 3D Angler World</title>
+    <!-- Tailwind CSS for modern HUD styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Three.js Library -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
+    <!-- Google Font Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        * {
+            box-sizing: border-box;
+            touch-action: manipulation;
+        }
+        body {
+            margin: 0;
+            overflow: hidden;
+            font-family: 'Plus Jakarta Sans', sans-serif;
+            user-select: none;
+            background-color: #030712;
+            color: #f3f4f6;
+        }
+        canvas#gameCanvas {
+            display: block;
+            width: 100vw;
+            height: 100vh;
+            position: absolute;
+            top: 0;
+            left: 0;
+            z-index: 0;
+        }
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.78);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+            box-shadow: 0 20px 40px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,255,255,0.15);
+        }
+        .glass-gold {
+            background: linear-gradient(135deg, rgba(245, 158, 11, 0.15), rgba(15, 23, 42, 0.85));
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(245, 158, 11, 0.35);
+            box-shadow: 0 12px 30px rgba(245, 158, 11, 0.15);
+        }
+        .text-glow-amber {
+            text-shadow: 0 0 12px rgba(245, 158, 11, 0.6);
+        }
+        .text-glow-cyan {
+            text-shadow: 0 0 12px rgba(34, 211, 238, 0.6);
+        }
+        .pulse-soft {
+            animation: pulseGlow 2.5s infinite ease-in-out;
+        }
+        @keyframes pulseGlow {
+            0%, 100% { transform: translate(-50%, 0) scale(1); filter: brightness(1); }
+            50% { transform: translate(-50%, 0) scale(1.03); filter: brightness(1.2); }
+        }
+        ::-webkit-scrollbar {
+            width: 5px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(15, 23, 42, 0.6);
+            border-radius: 8px;
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(245, 158, 11, 0.5);
+            border-radius: 8px;
+        }
+        .world-badge {
+            position: absolute;
+            transform: translate(-50%, -100%);
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+            z-index: 15;
+        }
+    </style>
+</head>
+<body class="relative w-screen h-screen overflow-hidden select-none">
+
+    <!-- First Person Crosshair Reticle -->
+    <div id="crosshair" class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 z-20 pointer-events-none flex items-center justify-center">
+        <div class="w-3 h-3 bg-white/90 rounded-full border-2 border-amber-400/80 shadow-[0_0_12px_rgba(251,191,36,0.9)]"></div>
+    </div>
+
+    <!-- 3D Dynamic World Badges Overlay Container -->
+    <div id="world-badges-container" class="absolute inset-0 pointer-events-none overflow-hidden z-10"></div>
+
+    <!-- Top Left Player Status & HUD Banner -->
+    <div class="absolute top-4 left-4 flex flex-col gap-2 z-20 pointer-events-none max-w-[calc(100vw-2rem)]">
+        <div class="glass-gold p-4 rounded-3xl min-w-[280px]">
+            <div class="text-amber-400 text-2xl font-black flex items-center justify-between">
+                <div class="flex items-center gap-2 drop-shadow-md">
+                    <span class="text-3xl">💰</span> $<span id="gold">50</span>
+                </div>
+                <div class="flex gap-1.5 pointer-events-auto">
+                    <button onclick="window.togglePOV()" class="text-xs bg-amber-500/20 hover:bg-amber-500/40 text-amber-300 font-bold px-3 py-1.5 rounded-xl border border-amber-400/40 transition-all active:scale-95" id="pov-btn">👁️ 1st Person</button>
+                    <button onclick="window.toggleAudio()" class="text-xs bg-slate-800/80 hover:bg-slate-700 text-slate-300 px-3 py-1.5 rounded-xl border border-white/10 transition-all active:scale-95" id="audio-btn">🔊 Sound</button>
+                </div>
+            </div>
+
+            <!-- Inventory Fish Counter -->
+            <div class="text-cyan-300 text-sm font-bold flex items-center justify-between mt-2 pt-2 border-t border-white/10">
+                <div class="flex items-center gap-2">
+                    <span class="text-lg">🐟</span> Fish Bucket: <span id="fish-count" class="text-white font-extrabold">0</span> / <span id="max-fish" class="text-slate-400">3</span>
+                </div>
+                <button onclick="document.getElementById('sell-shop-panel').style.display='flex'; window.renderSellMarket();" class="pointer-events-auto text-[11px] bg-gradient-to-r from-amber-500 to-yellow-400 text-slate-950 font-black px-3 py-1 rounded-lg shadow-md hover:brightness-110 active:scale-95 transition-all">SELL MARKET</button>
+            </div>
+            
+            <div class="mt-2 text-xs text-slate-200 font-semibold flex justify-between items-center">
+                <span id="rod-name" class="text-amber-300 font-extrabold flex items-center gap-1">🎣 Basic Rod</span>
+                <span id="bait-active" class="text-emerald-400 font-bold flex items-center gap-1">🪱 Worm</span>
+            </div>
+
+            <!-- Food / Energy Bar HUD -->
+            <div class="mt-2.5 pt-2 border-t border-white/10 flex flex-col gap-1">
+                <div class="flex justify-between items-center text-xs font-bold">
+                    <span class="text-orange-400 flex items-center gap-1">⚡ Stamina / Energy</span>
+                    <span id="food-val" class="text-orange-300 font-mono">100 / 100</span>
+                </div>
+                <div class="w-full bg-slate-900/90 h-3 rounded-full overflow-hidden border border-orange-500/40 p-0.5 shadow-inner">
+                    <div id="food-bar" class="bg-gradient-to-r from-amber-500 via-orange-500 to-red-500 h-full rounded-full w-full transition-all duration-300 shadow-[0_0_8px_rgba(249,115,22,0.6)]"></div>
+                </div>
+            </div>
+            
+            <div class="mt-2 text-[11px] text-purple-300 font-bold uppercase tracking-wider flex justify-between items-center">
+                <span id="outfit-stat">👕 Outfit: Classic Angler</span>
+                <span id="luck-stat" class="text-amber-400 font-mono">Luck: 1.0x</span>
+            </div>
+        </div>
+    </div>
+
+    <!-- Top Right Minimap & Quest Box -->
+    <div class="absolute top-4 right-4 flex flex-col items-end gap-3 z-20 pointer-events-none">
+        <!-- Live Radar Minimap -->
+        <div class="relative glass-panel rounded-3xl p-1.5 shadow-2xl overflow-hidden border-2 border-amber-400/40">
+            <canvas id="minimapCanvas" width="130" height="130" class="rounded-2xl"></canvas>
+            <div class="absolute bottom-1.5 right-3 text-[9px] text-amber-300 font-black uppercase tracking-widest drop-shadow">RADAR</div>
+        </div>
+
+        <!-- Active Quest Box -->
+        <div class="glass-panel p-3.5 rounded-2xl shadow-xl max-w-[230px] pointer-events-auto border-cyan-400/30">
+            <div class="flex items-center justify-between text-cyan-300 font-black text-xs uppercase tracking-wider mb-1">
+                <span class="flex items-center gap-1">📜 Active Quest</span>
+                <span id="quest-reward" class="text-amber-400 font-bold font-mono">+$150</span>
+            </div>
+            <div id="quest-desc" class="text-white/90 text-xs font-semibold leading-snug">Catch 2 Emerald Bass in Central Lake.</div>
+            <div class="w-full bg-slate-900/90 h-2 rounded-full mt-2 border border-cyan-500/40 overflow-hidden">
+                <div id="quest-bar" class="bg-gradient-to-r from-cyan-400 to-emerald-400 h-full w-0 transition-all shadow-[0_0_8px_rgba(34,211,238,0.7)]"></div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Keyboard Controls Overlay -->
+    <div class="absolute bottom-4 left-4 glass-panel p-3.5 rounded-2xl z-20 text-white/80 text-xs flex flex-col gap-1 pointer-events-none hidden md:flex border-white/10">
+        <div class="font-black text-amber-400 mb-1 uppercase tracking-wider flex items-center gap-1">🎮 Controls</div>
+        <div><span class="bg-white/20 px-1.5 py-0.5 rounded font-mono text-white font-bold">W A S D</span> : Move / Drive Boat</div>
+        <div><span class="bg-white/20 px-1.5 py-0.5 rounded font-mono text-white font-bold">Mouse Drag</span> : Look Around</div>
+        <div><span class="bg-white/20 px-1.5 py-0.5 rounded font-mono text-white font-bold">SPACE</span> : Jump / Cast Rod / Reel</div>
+        <div><span class="bg-white/20 px-1.5 py-0.5 rounded font-mono text-white font-bold">V</span> : Toggle Camera (1st/3rd Person)</div>
+        <div><span class="bg-white/20 px-1.5 py-0.5 rounded font-mono text-white font-bold">R</span> : Board / Dismount Boat</div>
+    </div>
+
+    <!-- Mobile Touch Controls Overlay -->
+    <div id="mobile-controls" class="absolute bottom-6 left-6 right-6 flex justify-between items-end z-30 pointer-events-none md:hidden">
+        <!-- Touch Joystick / D-Pad -->
+        <div class="grid grid-cols-3 gap-1 w-36 h-36 glass-panel p-2 rounded-3xl pointer-events-auto">
+            <div></div>
+            <button ontouchstart="keys['KeyW']=true" ontouchend="keys['KeyW']=false" class="bg-white/20 rounded-xl text-white font-black flex items-center justify-center text-xl active:bg-amber-400 active:text-slate-950">▲</button>
+            <div></div>
+            <button ontouchstart="keys['KeyA']=true" ontouchend="keys['KeyA']=false" class="bg-white/20 rounded-xl text-white font-black flex items-center justify-center text-xl active:bg-amber-400 active:text-slate-950">◀</button>
+            <div class="bg-white/10 rounded-xl flex items-center justify-center text-[9px] text-white/60 font-black">MOVE</div>
+            <button ontouchstart="keys['KeyD']=true" ontouchend="keys['KeyD']=false" class="bg-white/20 rounded-xl text-white font-black flex items-center justify-center text-xl active:bg-amber-400 active:text-slate-950">▶</button>
+            <div></div>
+            <button ontouchstart="keys['KeyS']=true" ontouchend="keys['KeyS']=false" class="bg-white/20 rounded-xl text-white font-black flex items-center justify-center text-xl active:bg-amber-400 active:text-slate-950">▼</button>
+            <div></div>
+        </div>
+
+        <!-- Touch Action Buttons -->
+        <div class="flex gap-2.5 pointer-events-auto">
+            <button ontouchstart="window.togglePOV()" class="w-12 h-12 glass-panel border-2 border-amber-400/80 active:bg-amber-500 rounded-2xl text-amber-300 font-black text-xs flex items-center justify-center shadow-lg">POV</button>
+            <button ontouchstart="handleKeyPress('KeyR')" class="w-14 h-14 bg-blue-600/90 active:bg-blue-500 border-2 border-white rounded-2xl text-white font-black text-xs flex items-center justify-center shadow-lg">BOAT</button>
+            <button ontouchstart="handleKeyPress('Space')" class="w-16 h-16 bg-gradient-to-tr from-amber-500 to-yellow-300 active:scale-95 border-2 border-white rounded-3xl text-slate-950 font-black text-sm flex items-center justify-center shadow-2xl">ACTION</button>
+        </div>
+    </div>
+
+    <!-- Fish Market Merchant Panel -->
+    <div id="sell-shop-panel" class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 glass-panel border-2 border-amber-400/60 p-6 rounded-3xl hidden flex-col items-center shadow-2xl z-40 w-[390px] max-w-[92vw]">
+        <button onclick="document.getElementById('sell-shop-panel').style.display='none'" class="absolute -top-3 -right-3 bg-red-600 hover:bg-red-500 border-2 border-white text-white font-bold text-xs py-1 px-2.5 rounded-full shadow-lg">X</button>
+        <div class="text-5xl mb-1">🏪</div>
+        <div class="text-amber-300 font-black text-2xl mb-0.5 text-glow-amber">Fish Market</div>
+        <div class="text-slate-300 text-xs mb-3 text-center">Sell your catches for Gold or clear inventory space!</div>
+
+        <div id="market-fish-list" class="w-full max-h-52 overflow-y-auto flex flex-col gap-2 my-2 pr-1"></div>
+
+        <div class="flex justify-between items-center w-full mt-3 pt-3 border-t border-slate-700">
+            <div class="text-slate-300 text-sm font-bold">Total Value: <span id="market-total-value" class="text-amber-400 font-mono text-lg font-black">$0</span></div>
+            <button onclick="window.sellAllFish()" class="bg-gradient-to-r from-amber-500 to-yellow-400 hover:from-amber-400 hover:to-yellow-300 text-slate-950 font-black text-sm px-5 py-2.5 rounded-full border border-white shadow-lg transition-transform active:scale-95">
+                SELL ALL FISH
+            </button>
+        </div>
+    </div>
+
+    <!-- Central Action Prompt Banner -->
+    <div id="interaction-prompt" class="absolute bottom-24 left-1/2 -translate-x-1/2 bg-gradient-to-r from-amber-500 via-yellow-400 to-amber-500 text-slate-950 font-black text-base md:text-lg px-8 py-3 rounded-full shadow-[0_0_35px_rgba(245,158,11,0.7)] border-2 border-white hidden z-30 pulse-soft tracking-wider uppercase text-center">
+        Press SPACE to interact
+    </div>
+
+    <!-- Notification Flash Message -->
+    <div id="flash-message" class="absolute top-12 left-1/2 -translate-x-1/2 glass-gold border-2 border-amber-400 text-amber-300 text-lg md:text-xl font-black px-8 py-3.5 rounded-2xl shadow-2xl hidden z-50 text-center transition-all pointer-events-none drop-shadow-lg max-w-[90vw]">
+        Message
+    </div>
+
+    <!-- Standard Fishing Minigame Overlay -->
+    <div id="fishing-container" class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 glass-panel border-2 border-cyan-400/80 p-6 rounded-3xl hidden flex-col items-center gap-4 z-40 shadow-[0_0_60px_rgba(34,211,238,0.35)] w-[360px] max-w-[92vw]">
+        <button onclick="window.endFishing()" class="absolute -top-3 -right-3 bg-red-600 hover:bg-red-500 border-2 border-white text-white font-bold text-xs py-1 px-2.5 rounded-full shadow-lg">X</button>
+        <div class="text-cyan-300 font-black text-2xl tracking-wider uppercase flex items-center gap-2 text-glow-cyan">
+            <span class="text-3xl animate-bounce">🎣</span> REELING FISH...
+        </div>
+        
+        <!-- Overall Catch Progress Bar -->
+        <div class="w-full flex flex-col gap-1">
+            <div class="flex justify-between text-xs font-extrabold text-slate-200 uppercase tracking-wider">
+                <span>Catch Progress</span>
+                <span id="fishing-progress-percent" class="text-emerald-400 font-mono">0%</span>
+            </div>
+            <div class="w-full bg-slate-950 h-5 rounded-full border border-cyan-500/50 overflow-hidden relative p-0.5 shadow-inner">
+                <div id="fishing-bar" class="bg-gradient-to-r from-cyan-500 via-emerald-400 to-green-300 h-full rounded-full w-0 transition-all shadow-[0_0_12px_rgba(16,185,129,0.8)]"></div>
+            </div>
+        </div>
+
+        <!-- Reel Match Bar -->
+        <div class="relative w-full h-14 bg-slate-950 border-2 border-slate-700 rounded-2xl overflow-hidden shadow-inner my-1">
+            <div id="reel-green-zone" class="absolute h-full bg-emerald-500/70 border-2 border-emerald-300 rounded-xl transition-all shadow-[0_0_20px_rgba(16,185,129,0.6)]"></div>
+            <div id="reel-fish-line" class="absolute h-full w-3.5 bg-red-500 border-2 border-white rounded-md shadow-[0_0_15px_#ef4444] transition-transform"></div>
+        </div>
+
+        <div class="text-cyan-200 text-xs font-extrabold text-center tracking-wider uppercase leading-relaxed">
+            HOLD <span class="bg-white/20 px-2 py-0.5 rounded text-white font-mono">SPACE</span> TO MOVE GREEN ZONE & MATCH FISH!
+        </div>
+    </div>
+
+    <!-- Boss Fishing Minigame Overlay -->
+    <div id="boss-fishing-container" class="absolute top-20 left-1/2 -translate-x-1/2 w-[92%] max-w-[650px] glass-panel border-4 border-purple-500/80 rounded-3xl p-6 hidden flex-col items-center shadow-[0_0_70px_rgba(168,85,247,0.5)] z-50">
+        <button onclick="window.endFishing()" class="absolute -top-3 -right-3 bg-red-600 hover:bg-red-500 border-2 border-white text-white font-bold text-sm py-1 px-3 rounded-full shadow-lg">X</button>
+        
+        <div class="flex justify-between items-center w-full px-2 mb-3">
+            <div class="text-purple-300 font-black text-2xl flex items-center gap-2">
+                <span class="text-3xl animate-pulse">👾</span> ANCIENT LEVIATHAN
+            </div>
+            <div class="text-red-400 font-mono text-3xl font-black animate-pulse" id="boss-timer-text">20.0s</div>
+        </div>
+
+        <div class="w-full h-7 bg-slate-950 rounded-full overflow-hidden mb-4 border-2 border-purple-400/50 p-0.5 shadow-inner">
+            <div id="boss-progress-fill" class="h-full bg-gradient-to-r from-purple-600 via-pink-500 to-amber-400 rounded-full w-0 transition-all shadow-[0_0_15px_rgba(236,72,153,0.8)]"></div>
+        </div>
+        
+        <div class="relative w-full h-16 bg-slate-950 border-2 border-purple-400/50 rounded-2xl overflow-hidden shadow-inner">
+            <div id="boss-fish-cursor" class="absolute h-full w-[44px] bg-red-500 shadow-[0_0_25px_#ef4444] rounded-xl left-[50%] -translate-x-1/2 transition-transform border-2 border-white"></div>
+            <div id="boss-player-zone" class="absolute h-full w-[90px] bg-emerald-500/80 border-4 border-emerald-300 rounded-2xl left-0 transition-transform"></div>
+        </div>
+        <div class="text-purple-200 text-xs font-bold mt-3 tracking-widest uppercase">HOLD SPACEBAR TO ALIGN GREEN ZONE WITH LEVIATHAN</div>
+    </div>
+
+    <!-- Bait Shop Modal -->
+    <div id="bait-shop-panel" class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 glass-panel border-2 border-emerald-400/80 p-6 rounded-3xl hidden flex-col items-center shadow-2xl z-40 w-[380px] max-w-[92vw]">
+        <button onclick="document.getElementById('bait-shop-panel').style.display='none'" class="absolute -top-3 -right-3 bg-red-600 hover:bg-red-500 border-2 border-white text-white font-bold text-xs py-1 px-2.5 rounded-full shadow-lg">X</button>
+        <div class="text-5xl mb-1">🪱</div>
+        <div class="text-emerald-400 font-black text-2xl mb-1">Bait & Tackle Shop</div>
+        <div class="text-slate-300 text-xs mb-4 text-center">Select premium baits to boost catch rates and unlock rare fish!</div>
+        
+        <div id="bait-list" class="w-full flex flex-col gap-2 mb-2"></div>
+    </div>
+
+    <!-- Museum Modal -->
+    <div id="museum-panel" class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 glass-panel border-2 border-purple-400/80 p-8 rounded-3xl hidden flex-col items-center text-center shadow-2xl z-40 w-[380px] max-w-[92vw]">
+        <button onclick="document.getElementById('museum-panel').style.display='none'" class="absolute -top-3 -right-3 bg-red-600 hover:bg-red-500 border-2 border-white text-white font-bold text-xs py-1 px-2.5 rounded-full shadow-lg">X</button>
+        <div class="text-6xl mb-2 drop-shadow-xl">🏛️</div>
+        <div class="text-purple-300 font-black text-2xl mb-1">Grand Museum</div>
+        <div class="text-slate-300 text-xs mb-4">Donate rare fish to expand the kingdom's marine collection!</div>
+        <div class="text-amber-400 font-black text-lg bg-black/60 px-6 py-2 rounded-2xl border border-amber-400/40 mb-5">Total Donated: <span id="museum-count" class="font-mono text-xl">0</span></div>
+        <button onclick="window.donateFish()" class="bg-gradient-to-r from-purple-500 to-pink-500 hover:brightness-110 text-white font-black text-sm px-8 py-3 rounded-full border border-white shadow-lg transition-all active:scale-95">
+            DONATE RAREST FISH
+        </button>
+    </div>
+
+    <!-- Rod Crafting Shop Modal -->
+    <div id="rod-shop-panel" class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 glass-panel border-2 border-cyan-400/80 p-8 rounded-3xl hidden flex-col items-center text-center shadow-2xl z-40 w-[360px] max-w-[92vw]">
+        <button onclick="document.getElementById('rod-shop-panel').style.display='none'" class="absolute -top-3 -right-3 bg-red-600 hover:bg-red-500 border-2 border-white text-white font-bold text-xs py-1 px-2.5 rounded-full shadow-lg">X</button>
+        <div class="text-6xl mb-2">🎣</div>
+        <div class="text-cyan-300 font-black text-2xl mb-1">Rod Crafting Shop</div>
+        <div class="text-slate-300 text-xs mb-5">Upgrade rod level to expand the green reel zone width!</div>
+        <button onclick="window.buyRod()" class="bg-gradient-to-r from-cyan-500 to-blue-500 hover:brightness-110 text-white font-black text-sm px-6 py-3 rounded-full border border-white shadow-lg transition-all active:scale-95">
+            UPGRADE ROD ($150)
+        </button>
+    </div>
+
+    <!-- Boutique Shop Modal -->
+    <div id="clothing-shop-panel" class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 glass-panel border-2 border-pink-400/80 p-6 rounded-3xl hidden flex-col items-center shadow-2xl z-40 w-[390px] max-w-[92vw]">
+        <button onclick="document.getElementById('clothing-shop-panel').style.display='none'" class="absolute -top-3 -right-3 bg-red-600 hover:bg-red-500 border-2 border-white text-white font-bold text-xs py-1 px-2.5 rounded-full shadow-lg">X</button>
+        <div class="text-5xl mb-1">👕</div>
+        <div class="text-pink-300 font-black text-2xl mb-1">Highland Boutique</div>
+        <div class="text-slate-300 text-xs mb-3 text-center">Buy stylish angler outfits for statutory luck multipliers!</div>
+        <div id="clothes-catalog-list" class="w-full flex flex-col gap-2 max-h-56 overflow-y-auto my-2 pr-1"></div>
+    </div>
+
+    <!-- Food Diner Modal -->
+    <div id="diner-shop-panel" class="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 glass-panel border-2 border-orange-400/80 p-6 rounded-3xl hidden flex-col items-center shadow-2xl z-40 w-[390px] max-w-[92vw]">
+        <button onclick="document.getElementById('diner-shop-panel').style.display='none'" class="absolute -top-3 -right-3 bg-red-600 hover:bg-red-500 border-2 border-white text-white font-bold text-xs py-1 px-2.5 rounded-full shadow-lg">X</button>
+        <div class="text-5xl mb-1">🍔</div>
+        <div class="text-orange-300 font-black text-2xl mb-1">Hillside Diner</div>
+        <div class="text-slate-300 text-xs mb-3 text-center">Eat delicious meals to fully restore energy!</div>
+        <div id="food-catalog-list" class="w-full flex flex-col gap-2 max-h-56 overflow-y-auto my-2 pr-1"></div>
+    </div>
+
+    <!-- WebGL Canvas -->
+    <canvas id="gameCanvas"></canvas>
+
+    <script>
+        const MAIN_SHOP_POS = { x: 38, z: 32 };
+        const HILL_TOWN_POS = { x: -75, z: -65 };
+
+        function getBaitIcon(name) {
+            const b = baitCatalog.find(item => item.name === name);
+            return b ? b.icon : "🪱";
+        }
+
+        window.togglePOV = () => {
+            state.isFirstPerson = !state.isFirstPerson;
+            updateUI();
+        };
+
+        const state = {
+            gold: 50,
+            fishInventory: [],
+            maxFish: 3,
+            rodLevel: 1,
+            luckLevel: 1.0,
+            activeBait: "Worm",
+            museumCount: 0,
+            food: 100,
+            maxFood: 100,
+            activeOutfit: "Classic Angler",
+
+            isFirstPerson: true,
+
+            activeQuest: {
+                title: "Catch 2 Emerald Bass",
+                targetName: "Emerald Bass",
+                current: 0,
+                required: 2,
+                reward: 150
+            },
+
+            playerVelocityY: 0,
+            isGrounded: true,
+
+            isInBoat: false,
+            nearBoat: false,
+
+            isFishing: false,
+            fishingProgress: 0,
+            fishPos: 0.5,
+            fishTarget: 0.5,
+            fishTimer: 0,
+            greenPos: 0.20,
+            greenWidth: 0.58,
+            greenVel: 0,
+            
+            isBossFishing: false,
+            bossFishPos: 0.5,
+            bossTimer: 0,
+            bossTimeLimit: 1200,
+            myBossDamage: 0,
+            bossZonePos: 0.5,
+
+            nearDock: false,
+            nearShop: null,
+            nearMuseum: false
+        };
+
+        const clothesCatalog = [
+            { name: "Classic Angler", price: 0, perk: "Standard Fishing Gear", icon: "🧢" },
+            { name: "Highland Captain", price: 180, perk: "+0.3x Luck Multiplier", icon: "🧥" },
+            { name: "Gold Crown & Cloak", price: 450, perk: "+0.8x Luck Multiplier!", icon: "👑" },
+            { name: "Mythic Leviathan Armor", price: 900, perk: "+1.5x Luck & Max Energy +50", icon: "🐉" }
+        ];
+
+        const foodCatalog = [
+            { name: "Crispy Fish Tacos", price: 20, energy: 35, icon: "🌮", desc: "Restores 35 Energy." },
+            { name: "Fisherman's Burger", price: 40, energy: 70, icon: "🍔", desc: "Restores 70 Energy." },
+            { name: "Highland Berry Pie", price: 60, energy: 100, icon: "🥧", desc: "Full Energy Restore!" }
+        ];
+
+        const baitCatalog = [
+            { name: "Worm", price: 0, boost: 1.0, icon: "🪱", desc: "Standard bait. Default multiplier." },
+            { name: "Luminous Shrimp", price: 50, boost: 1.5, icon: "🦐", desc: "Attracts nocturnal lake fish." },
+            { name: "Golden Beetle", price: 120, boost: 2.2, icon: "🪲", desc: "High multiplier for legendary catches." },
+            { name: "Quantum Chum", price: 300, boost: 3.5, icon: "🧪", desc: "Mythic bait. Massive luck multiplier!" }
+        ];
+
+        const AudioFX = {
+            ctx: null,
+            enabled: true,
+            init() {
+                if (!this.ctx) {
+                    const AudioCtx = window.AudioContext || window.webkitAudioContext;
+                    if (AudioCtx) this.ctx = new AudioCtx();
+                }
+            },
+            playSplash() {
+                if (!this.enabled || !this.ctx) return;
+                try {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(280, this.ctx.currentTime);
+                    osc.frequency.exponentialRampToValueAtTime(70, this.ctx.currentTime + 0.35);
+                    gain.gain.setValueAtTime(0.5, this.ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.35);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + 0.35);
+                } catch(e){}
+            },
+            playCatch() {
+                if (!this.enabled || !this.ctx) return;
+                try {
+                    const now = this.ctx.currentTime;
+                    const notes = [523.25, 659.25, 783.99, 1046.50];
+                    notes.forEach((freq, idx) => {
+                        const osc = this.ctx.createOscillator();
+                        const gain = this.ctx.createGain();
+                        osc.type = 'triangle';
+                        osc.frequency.setValueAtTime(freq, now + idx * 0.07);
+                        gain.gain.setValueAtTime(0.35, now + idx * 0.07);
+                        gain.gain.exponentialRampToValueAtTime(0.01, now + idx * 0.07 + 0.25);
+                        osc.connect(gain);
+                        gain.connect(this.ctx.destination);
+                        osc.start(now + idx * 0.07);
+                        osc.stop(now + idx * 0.07 + 0.25);
+                    });
+                } catch(e){}
+            },
+            playCoin() {
+                if (!this.enabled || !this.ctx) return;
+                try {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sine';
+                    osc.frequency.setValueAtTime(987.77, this.ctx.currentTime);
+                    osc.frequency.setValueAtTime(1318.51, this.ctx.currentTime + 0.08);
+                    gain.gain.setValueAtTime(0.35, this.ctx.currentTime);
+                    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.3);
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+                    osc.start();
+                    osc.stop(this.ctx.currentTime + 0.3);
+                } catch(e){}
+            }
+        };
+
+        window.toggleAudio = () => {
+            AudioFX.init();
+            AudioFX.enabled = !AudioFX.enabled;
+            document.getElementById('audio-btn').innerText = AudioFX.enabled ? "🔊 Sound" : "🔇 Sound";
+        };
+
+        const FISH_TYPES = [
+            { name: "Rainbow Trout", baseValue: 25, rarity: "Common", color: 0x38bdf8, icon: "🐟", minWeight: 1.2, maxWeight: 3.5 },
+            { name: "Emerald Bass", baseValue: 45, rarity: "Uncommon", color: 0x34d399, icon: "🐠", minWeight: 2.0, maxWeight: 5.8 },
+            { name: "Golden Carp", baseValue: 90, rarity: "Rare", color: 0xfacc15, icon: "🐡", minWeight: 4.0, maxWeight: 12.0 },
+            { name: "Shadow Catfish", baseValue: 180, rarity: "Epic", color: 0xa855f7, icon: "🐋", minWeight: 8.0, maxWeight: 22.0 },
+            { name: "Sunfire Salmon", baseValue: 350, rarity: "Legendary", color: 0xf97316, icon: "🦈", minWeight: 15.0, maxWeight: 38.0 },
+            { name: "Ancient Leviathan", baseValue: 1200, rarity: "Mythic", color: 0xec4899, icon: "👾", minWeight: 85.0, maxWeight: 210.0 }
+        ];
+
+        const canvas = document.getElementById('gameCanvas');
+        const scene = new THREE.Scene();
+
+        // Sky atmosphere gradient
+        scene.background = new THREE.Color(0x38bdf8);
+        scene.fog = new THREE.FogExp2(0x38bdf8, 0.0035);
+
+        const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 1000);
+        const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
+        renderer.setSize(window.innerWidth, window.innerHeight);
+        renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+        renderer.shadowMap.enabled = true;
+        renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+
+        // Enhanced Lighting
+        const hemiLight = new THREE.HemisphereLight(0xbae6fd, 0x15803d, 0.65);
+        scene.add(hemiLight);
+
+        const dirLight = new THREE.DirectionalLight(0xfff7ed, 1.35);
+        dirLight.position.set(120, 160, 70);
+        dirLight.castShadow = true;
+        dirLight.shadow.mapSize.width = 2048;
+        dirLight.shadow.mapSize.height = 2048;
+        dirLight.shadow.camera.near = 0.5;
+        dirLight.shadow.camera.far = 400;
+        const d = 160;
+        dirLight.shadow.camera.left = -d;
+        dirLight.shadow.camera.right = d;
+        dirLight.shadow.camera.top = d;
+        dirLight.shadow.camera.bottom = -d;
+        scene.add(dirLight);
+
+        // Sun Visual Disc
+        const sunGeo = new THREE.SphereGeometry(12, 32, 32);
+        const sunMat = new THREE.MeshBasicMaterial({ color: 0xfffbeb });
+        const sunMesh = new THREE.Mesh(sunGeo, sunMat);
+        sunMesh.position.set(220, 280, 120);
+        scene.add(sunMesh);
+
+        function getTerrainHeight(x, z) {
+            const dist = Math.sqrt(x * x + z * z);
+            if (dist < 60) {
+                // Smooth lake basin below water level
+                return -Math.cos((dist / 60) * Math.PI) * 7.5 - 7.5;
+            } else {
+                // Shoreline sand into grass hills and distant mountain peaks
+                const hillFactor = Math.pow((dist - 60) / 10, 1.25);
+                const noise = Math.sin(x * 0.04) * 3.5 + Math.cos(z * 0.04) * 3.5;
+                return hillFactor + noise;
+            }
+        }
+
+        // Translucent Animated Lake Water
+        const waterGeo = new THREE.PlaneGeometry(280, 280, 80, 80);
+        const waterMat = new THREE.MeshStandardMaterial({
+            color: 0x0284c7,
+            roughness: 0.05,
+            metalness: 0.85,
+            transparent: true,
+            opacity: 0.88
+        });
+        const water = new THREE.Mesh(waterGeo, waterMat);
+        water.rotation.x = -Math.PI / 2;
+        water.position.y = -0.5;
+        scene.add(water);
+
+        // Shore Sand / Ground Terrain Shader Mesh
+        const terrainGeo = new THREE.PlaneGeometry(360, 360, 110, 110);
+        const pos = terrainGeo.attributes.position;
+        for (let i = 0; i < pos.count; i++) {
+            const x = pos.getX(i);
+            const z = pos.getY(i);
+            pos.setZ(i, getTerrainHeight(x, z));
+        }
+        terrainGeo.computeVertexNormals();
+
+        const terrainMat = new THREE.MeshStandardMaterial({
+            color: 0x22c55e,
+            roughness: 0.85,
+            metalness: 0.15
+        });
+        const terrain = new THREE.Mesh(terrainGeo, terrainMat);
+        terrain.rotation.x = -Math.PI / 2;
+        terrain.receiveShadow = true;
+        scene.add(terrain);
+
+        function createDock(x, z, rot) {
+            const group = new THREE.Group();
+            const deckGeo = new THREE.BoxGeometry(7, 0.5, 26);
+            const woodMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.7 });
+            const deck = new THREE.Mesh(deckGeo, woodMat);
+            deck.position.set(0, 0.25, 0);
+            deck.castShadow = true;
+            deck.receiveShadow = true;
+            group.add(deck);
+
+            // Supporting Deck Legs & Posts
+            for (let i = -11; i <= 11; i += 5.5) {
+                const leg1 = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 8), woodMat);
+                leg1.position.set(-3.1, -3.8, i);
+                const leg2 = new THREE.Mesh(new THREE.CylinderGeometry(0.35, 0.35, 8), woodMat);
+                leg2.position.set(3.1, -3.8, i);
+                group.add(leg1, leg2);
+            }
+
+            // Glowing Pier Lanterns
+            const lanternMat = new THREE.MeshBasicMaterial({ color: 0xfde047 });
+            const l1 = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 8), lanternMat);
+            l1.position.set(-3.1, 1.8, 11);
+            const l2 = new THREE.Mesh(new THREE.SphereGeometry(0.4, 8, 8), lanternMat);
+            l2.position.set(3.1, 1.8, 11);
+            group.add(l1, l2);
+
+            group.position.set(x, 0, z);
+            group.rotation.y = rot;
+            scene.add(group);
+            return group;
+        }
+
+        const mainDock = createDock(0, 48, 0);
+
+        // World Shop Buildings with Sign Boards
+        function createShopBuilding(x, z, wallColor, roofColor, labelText, emoji) {
+            const terrainY = Math.max(0, getTerrainHeight(x, z));
+            const shopGroup = new THREE.Group();
+
+            // Main Building Body
+            const bodyGeo = new THREE.BoxGeometry(8.5, 6.5, 8.5);
+            const bodyMat = new THREE.MeshStandardMaterial({ color: wallColor, roughness: 0.5 });
+            const body = new THREE.Mesh(bodyGeo, bodyMat);
+            body.position.y = 3.25;
+            body.castShadow = true;
+            body.receiveShadow = true;
+            shopGroup.add(body);
+
+            // Roof
+            const roofGeo = new THREE.ConeGeometry(7, 4.5, 4);
+            const roofMat = new THREE.MeshStandardMaterial({ color: roofColor, roughness: 0.4 });
+            const roof = new THREE.Mesh(roofGeo, roofMat);
+            roof.position.y = 8.25;
+            roof.rotation.y = Math.PI / 4;
+            roof.castShadow = true;
+            shopGroup.add(roof);
+
+            // Sign Board Accent
+            const signGeo = new THREE.BoxGeometry(5, 1.5, 0.4);
+            const signMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.3 });
+            const sign = new THREE.Mesh(signGeo, signMat);
+            sign.position.set(0, 5, 4.4);
+            shopGroup.add(sign);
+
+            shopGroup.position.set(x, terrainY, z);
+            scene.add(shopGroup);
+
+            // Register world 3D badge target
+            worldBadges.push({
+                position: new THREE.Vector3(x, terrainY + 10, z),
+                text: `${emoji} ${labelText}`,
+                element: null
+            });
+
+            return shopGroup;
+        }
+
+        const worldBadges = [];
+
+        const fishMarketBuilding = createShopBuilding(MAIN_SHOP_POS.x, MAIN_SHOP_POS.z, 0xd97706, 0x78350f, "Fish Market", "🏪");
+        const baitShopBuilding = createShopBuilding(MAIN_SHOP_POS.x - 14, MAIN_SHOP_POS.z + 4, 0x059669, 0x064e3b, "Bait & Tackle", "🪱");
+        const rodShopBuilding = createShopBuilding(MAIN_SHOP_POS.x + 14, MAIN_SHOP_POS.z + 4, 0x0284c7, 0x0c4a6e, "Rod Crafting", "🎣");
+        const museumBuilding = createShopBuilding(0, -68, 0x9333ea, 0x4c1d95, "Grand Museum", "🏛️");
+        const dinerBuilding = createShopBuilding(HILL_TOWN_POS.x, HILL_TOWN_POS.z, 0xea580c, 0x7c2d12, "Hillside Diner", "🍔");
+        const boutiqueBuilding = createShopBuilding(HILL_TOWN_POS.x + 16, HILL_TOWN_POS.z - 8, 0xdb2777, 0x831843, "Boutique", "👕");
+
+        const treeLeavesGeo = new THREE.ConeGeometry(3.5, 9, 6);
+        const treeTrunkGeo = new THREE.CylinderGeometry(0.6, 0.8, 3.5);
+        const leavesMat = new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.8 });
+        const trunkMat = new THREE.MeshStandardMaterial({ color: 0x451a03, roughness: 0.9 });
+
+        for (let i = 0; i < 110; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const dist = 65 + Math.random() * 100;
+            const tx = Math.cos(angle) * dist;
+            const tz = Math.sin(angle) * dist;
+            const ty = getTerrainHeight(tx, tz);
+
+            const tree = new THREE.Group();
+            const leaves = new THREE.Mesh(treeLeavesGeo, leavesMat);
+            leaves.position.y = 6.2;
+            leaves.castShadow = true;
+            const trunk = new THREE.Mesh(treeTrunkGeo, trunkMat);
+            trunk.position.y = 1.75;
+            tree.add(leaves, trunk);
+
+            tree.position.set(tx, ty, tz);
+            scene.add(tree);
+        }
+
+        // Shoreline Rocks & Boulders
+        const rockGeo = new THREE.DodecahedronGeometry(1.8, 1);
+        const rockMat = new THREE.MeshStandardMaterial({ color: 0x64748b, roughness: 0.9 });
+        for (let i = 0; i < 40; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const rx = Math.cos(angle) * (56 + Math.random() * 8);
+            const rz = Math.sin(angle) * (56 + Math.random() * 8);
+            const ry = getTerrainHeight(rx, rz);
+
+            const rock = new THREE.Mesh(rockGeo, rockMat);
+            rock.position.set(rx, ry + 0.5, rz);
+            rock.rotation.set(Math.random(), Math.random(), Math.random());
+            rock.scale.set(0.8 + Math.random(), 0.6 + Math.random(), 0.8 + Math.random());
+            scene.add(rock);
+        }
+
+        // Motorboat Vehicle Object
+        const boatGroup = new THREE.Group();
+        const hullGeo = new THREE.BoxGeometry(4.2, 1.4, 8.5);
+        const hullMat = new THREE.MeshStandardMaterial({ color: 0x9a3412, roughness: 0.4 });
+        const hull = new THREE.Mesh(hullGeo, hullMat);
+        hull.position.y = 0.3;
+        hull.castShadow = true;
+        boatGroup.add(hull);
+
+        const seatGeo = new THREE.BoxGeometry(3.8, 0.4, 1.8);
+        const seatMat = new THREE.MeshStandardMaterial({ color: 0x451a03 });
+        const seat = new THREE.Mesh(seatGeo, seatMat);
+        seat.position.set(0, 0.9, -1.2);
+        boatGroup.add(seat);
+
+        boatGroup.position.set(8, -0.2, 42);
+        scene.add(boatGroup);
+
+        worldBadges.push({
+            position: boatGroup.position,
+            text: "🚤 Motorboat",
+            element: null
+        });
+
+        // Swimming Fish Silhouettes Under Water
+        const fishSilhouettes = [];
+        const fishShapeGeo = new THREE.ConeGeometry(0.6, 2.2, 4);
+        const fishShapeMat = new THREE.MeshBasicMaterial({ color: 0x0f172a, transparent: true, opacity: 0.4 });
+
+        for (let i = 0; i < 18; i++) {
+            const fMesh = new THREE.Mesh(fishShapeGeo, fishShapeMat);
+            fMesh.rotation.x = Math.PI / 2;
+            const radius = 15 + Math.random() * 38;
+            const angle = Math.random() * Math.PI * 2;
+            fMesh.position.set(Math.cos(angle) * radius, -2 - Math.random() * 2, Math.sin(angle) * radius);
+            scene.add(fMesh);
+            fishSilhouettes.push({ mesh: fMesh, radius: radius, angle: angle, speed: 0.005 + Math.random() * 0.008 });
+        }
+
+        const player = new THREE.Group();
+        player.position.set(0, 0.5, 58);
+        scene.add(player);
+
+        // Player Avatar Mesh for 3rd Person View
+        const playerBodyGeo = new THREE.CylinderGeometry(0.65, 0.65, 2.8, 12);
+        const playerBodyMat = new THREE.MeshStandardMaterial({ color: 0x2563eb, roughness: 0.5 });
+        const playerMesh = new THREE.Mesh(playerBodyGeo, playerBodyMat);
+        playerMesh.position.y = 1.4;
+        playerMesh.castShadow = true;
+        player.add(playerMesh);
+
+        // Avatar Head
+        const headMesh = new THREE.Mesh(new THREE.SphereGeometry(0.55, 12, 12), new THREE.MeshStandardMaterial({ color: 0xfde047 }));
+        headMesh.position.y = 3.15;
+        player.add(headMesh);
+
+        // Fishing Rod
+        const rodGroup = new THREE.Group();
+        const rodHandle = new THREE.Mesh(new THREE.CylinderGeometry(0.06, 0.08, 1.2), new THREE.MeshStandardMaterial({ color: 0x451a03 }));
+        rodHandle.rotation.x = Math.PI / 3;
+        const rodPole = new THREE.Mesh(new THREE.CylinderGeometry(0.02, 0.05, 4.8), new THREE.MeshStandardMaterial({ color: 0x0284c7, metalness: 0.8 }));
+        rodPole.position.set(0, 1.9, -1.3);
+        rodPole.rotation.x = Math.PI / 4;
+        rodGroup.add(rodHandle, rodPole);
+        rodGroup.position.set(0.6, 1.5, -0.4);
+        player.add(rodGroup);
+
+        // Floating Bobber for Cast Rod
+        const bobberGroup = new THREE.Group();
+        const bobberTop = new THREE.Mesh(new THREE.SphereGeometry(0.35, 12, 12), new THREE.MeshBasicMaterial({ color: 0xef4444 }));
+        const bobberBottom = new THREE.Mesh(new THREE.SphereGeometry(0.35, 12, 12), new THREE.MeshBasicMaterial({ color: 0xffffff }));
+        bobberTop.position.y = 0.2;
+        bobberBottom.position.y = -0.1;
+        bobberGroup.add(bobberTop, bobberBottom);
+        bobberGroup.visible = false;
+        scene.add(bobberGroup);
+
+        // Curving Fishing Line Ribbon
+        const lineGeo = new THREE.BufferGeometry();
+        const linePositions = new Float32Array(30 * 3);
+        lineGeo.setAttribute('position', new THREE.BufferAttribute(linePositions, 3));
+        const lineMat = new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.75 });
+        const fishingLine = new THREE.Line(lineGeo, lineMat);
+        scene.add(fishingLine);
+
+        const keys = {};
+        let isMouseDown = false;
+        let yaw = 0, pitch = 0;
+
+        window.addEventListener('keydown', (e) => {
+            keys[e.code] = true;
+            handleKeyPress(e.code);
+        });
+        window.addEventListener('keyup', (e) => {
+            keys[e.code] = false;
+        });
+
+        window.addEventListener('mousedown', (e) => {
+            if (e.target.tagName === 'CANVAS') {
+                isMouseDown = true;
+            }
+        });
+        window.addEventListener('mouseup', () => isMouseDown = false);
+        window.addEventListener('mousemove', (e) => {
+            if (isMouseDown) {
+                yaw -= e.movementX * 0.003;
+                pitch -= e.movementY * 0.003;
+                pitch = Math.max(-Math.PI / 2.5, Math.min(Math.PI / 2.5, pitch));
+            }
+        });
+
+        function handleKeyPress(code) {
+            AudioFX.init();
+            if (code === 'KeyV') {
+                state.isFirstPerson = !state.isFirstPerson;
+                updateUI();
+            }
+            if (code === 'KeyR') {
+                if (state.isInBoat) {
+                    state.isInBoat = false;
+                    player.position.copy(boatGroup.position);
+                    player.position.x += 3.5;
+                    showFlash("Dismounted Motorboat!");
+                } else if (state.nearBoat) {
+                    state.isInBoat = true;
+                    showFlash("Mounted Motorboat! Use WASD to steer!");
+                }
+            }
+            if (code === 'Space') {
+                if (state.isFishing || state.isBossFishing) {
+                    // Minigame reel handles space in animation tick
+                } else if (state.nearShop === 'market') {
+                    document.getElementById('sell-shop-panel').style.display = 'flex';
+                    window.renderSellMarket();
+                } else if (state.nearShop === 'bait') {
+                    document.getElementById('bait-shop-panel').style.display = 'flex';
+                    window.renderBaitShop();
+                } else if (state.nearShop === 'rod') {
+                    document.getElementById('rod-shop-panel').style.display = 'flex';
+                } else if (state.nearShop === 'diner') {
+                    document.getElementById('diner-shop-panel').style.display = 'flex';
+                    window.renderDinerShop();
+                } else if (state.nearShop === 'boutique') {
+                    document.getElementById('clothing-shop-panel').style.display = 'flex';
+                    window.renderBoutiqueShop();
+                } else if (state.nearMuseum) {
+                    document.getElementById('museum-panel').style.display = 'flex';
+                } else if (state.nearDock || state.isInBoat || player.position.length() < 62) {
+                    if (state.food <= 0) {
+                        showFlash("⚠️ Too exhausted! Eat delicious food at the Diner!");
+                        return;
+                    }
+                    startFishing();
+                } else if (state.isGrounded) {
+                    state.playerVelocityY = 0.32;
+                    state.isGrounded = false;
+                }
+            }
+        }
+
+        function startFishing() {
+            AudioFX.playSplash();
+            state.food = Math.max(0, state.food - 2);
+            updateUI();
+
+            // Cast Bobber Out
+            const castDir = new THREE.Vector3(0, 0, -12).applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+            const bobberTarget = player.position.clone().add(castDir);
+            bobberTarget.y = -0.3;
+            bobberGroup.position.copy(bobberTarget);
+            bobberGroup.visible = true;
+
+            const isDeepPortal = state.isInBoat && boatGroup.position.length() < 20;
+
+            if (isDeepPortal) {
+                state.isBossFishing = true;
+                state.bossTimer = state.bossTimeLimit;
+                state.myBossDamage = 0;
+                document.getElementById('boss-fishing-container').style.display = 'flex';
+            } else {
+                state.isFishing = true;
+                state.fishingProgress = 0;
+                state.fishPos = 0.5;
+                state.greenPos = 0.3;
+                document.getElementById('fishing-container').style.display = 'flex';
+            }
+        }
+
+        window.endFishing = () => {
+            state.isFishing = false;
+            state.isBossFishing = false;
+            bobberGroup.visible = false;
+            document.getElementById('fishing-container').style.display = 'none';
+            document.getElementById('boss-fishing-container').style.display = 'none';
+        };
+
+        function catchFish(isBoss = false) {
+            window.endFishing();
+            AudioFX.playCatch();
+
+            let fishType;
+            if (isBoss) {
+                fishType = FISH_TYPES[5];
+            } else {
+                const baitObj = baitCatalog.find(b => b.name === state.activeBait);
+                const baitBoost = baitObj ? baitObj.boost : 1.0;
+                const luckFactor = state.luckLevel * baitBoost;
+
+                const roll = Math.random() * luckFactor;
+                if (roll > 3.2) fishType = FISH_TYPES[4];
+                else if (roll > 2.2) fishType = FISH_TYPES[3];
+                else if (roll > 1.4) fishType = FISH_TYPES[2];
+                else if (roll > 0.7) fishType = FISH_TYPES[1];
+                else fishType = FISH_TYPES[0];
+            }
+
+            const weight = (fishType.minWeight + Math.random() * (fishType.maxWeight - fishType.minWeight)).toFixed(1);
+            const value = Math.round(fishType.baseValue * (weight / fishType.minWeight));
+
+            const caughtObj = {
+                name: fishType.name,
+                rarity: fishType.rarity,
+                weight: weight,
+                value: value,
+                icon: fishType.icon
+            };
+
+            if (state.fishInventory.length < state.maxFish) {
+                state.fishInventory.push(caughtObj);
+                showFlash(`🎉 Caught ${fishType.icon} ${fishType.name} (${weight} lbs) - Value: $${value}!`);
+
+                if (state.activeQuest && state.activeQuest.targetName === fishType.name) {
+                    state.activeQuest.current++;
+                    if (state.activeQuest.current >= state.activeQuest.required) {
+                        state.gold += state.activeQuest.reward;
+                        AudioFX.playCoin();
+                        showFlash(`📜 QUEST COMPLETE! Reward: +$${state.activeQuest.reward}!`);
+                        state.activeQuest = {
+                            title: "Catch 1 Sunfire Salmon",
+                            targetName: "Sunfire Salmon",
+                            current: 0,
+                            required: 1,
+                            reward: 350
+                        };
+                    }
+                }
+            } else {
+                showFlash(`⚠️ Bucket Full! Sold ${fishType.name} directly for $${value}!`);
+                state.gold += value;
+                AudioFX.playCoin();
+            }
+
+            updateUI();
+        }
+
+        function showFlash(msg) {
+            const el = document.getElementById('flash-message');
+            el.innerText = msg;
+            el.style.display = 'block';
+            setTimeout(() => { el.style.display = 'none'; }, 3200);
+        }
+
+        function updateUI() {
+            document.getElementById('gold').innerText = state.gold;
+            document.getElementById('fish-count').innerText = state.fishInventory.length;
+            document.getElementById('max-fish').innerText = state.maxFish;
+            document.getElementById('food-val').innerText = `${state.food} / ${state.maxFood}`;
+            document.getElementById('food-bar').style.width = `${(state.food / state.maxFood) * 100}%`;
+            document.getElementById('outfit-stat').innerText = `👕 Outfit: ${state.activeOutfit}`;
+            document.getElementById('bait-active').innerText = `${getBaitIcon(state.activeBait)} ${state.activeBait}`;
+            document.getElementById('luck-stat').innerText = `Luck: ${state.luckLevel.toFixed(1)}x`;
+            document.getElementById('pov-btn').innerText = state.isFirstPerson ? "👁️ 1st Person" : "🎥 3rd Person";
+            document.getElementById('crosshair').style.display = state.isFirstPerson ? "flex" : "none";
+
+            if (state.activeQuest) {
+                document.getElementById('quest-desc').innerText = state.activeQuest.title;
+                document.getElementById('quest-reward').innerText = `+$${state.activeQuest.reward}`;
+                const pct = (state.activeQuest.current / state.activeQuest.required) * 100;
+                document.getElementById('quest-bar').style.width = `${pct}%`;
+            }
+        }
+
+        window.renderSellMarket = () => {
+            const container = document.getElementById('market-fish-list');
+            container.innerHTML = '';
+            let totalVal = 0;
+
+            if (state.fishInventory.length === 0) {
+                container.innerHTML = `<div class="text-white/50 text-xs text-center py-6">No fish in bucket. Go catch some!</div>`;
+            } else {
+                state.fishInventory.forEach((f) => {
+                    totalVal += f.value;
+                    const row = document.createElement('div');
+                    row.className = 'flex justify-between items-center bg-slate-900/80 p-3 rounded-2xl border border-white/10 text-xs';
+                    row.innerHTML = `
+                        <div class="flex items-center gap-3">
+                            <span class="text-2xl">${f.icon}</span>
+                            <div>
+                                <div class="text-white font-black">${f.name}</div>
+                                <div class="text-slate-400 text-[10px] font-semibold">${f.weight} lbs • ${f.rarity}</div>
+                            </div>
+                        </div>
+                        <div class="text-amber-400 font-mono font-black text-sm">$${f.value}</div>
+                    `;
+                    container.appendChild(row);
+                });
+            }
+            document.getElementById('market-total-value').innerText = `$${totalVal}`;
+        };
+
+        window.sellAllFish = () => {
+            if (state.fishInventory.length === 0) return;
+            let sum = 0;
+            state.fishInventory.forEach(f => sum += f.value);
+            state.gold += sum;
+            state.fishInventory = [];
+            AudioFX.playCoin();
+            showFlash(`💰 Sold all fish for $${sum}!`);
+            document.getElementById('sell-shop-panel').style.display = 'none';
+            updateUI();
+        };
+
+        window.renderBaitShop = () => {
+            const container = document.getElementById('bait-list');
+            container.innerHTML = '';
+            baitCatalog.forEach(b => {
+                const isEquipped = state.activeBait === b.name;
+                const row = document.createElement('div');
+                row.className = 'flex justify-between items-center bg-slate-900/80 p-3 rounded-2xl border border-white/10 text-xs';
+                row.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <span class="text-2xl">${b.icon}</span>
+                        <div>
+                            <div class="text-white font-black">${b.name}</div>
+                            <div class="text-slate-400 text-[10px]">${b.desc}</div>
+                        </div>
+                    </div>
+                    <button onclick="window.selectBait('${b.name}', ${b.price})" class="px-3.5 py-1.5 rounded-xl text-xs font-black transition-all ${isEquipped ? 'bg-emerald-500 text-slate-950' : 'bg-slate-800 hover:bg-slate-700 text-amber-300'}">
+                        ${isEquipped ? 'EQUIPPED' : `$${b.price}`}
+                    </button>
+                `;
+                container.appendChild(row);
+            });
+        };
+
+        window.selectBait = (name, price) => {
+            if (state.activeBait === name) return;
+            if (price > 0 && state.gold < price) {
+                showFlash("⚠️ Not enough Gold!");
+                return;
+            }
+            if (price > 0) state.gold -= price;
+            state.activeBait = name;
+            AudioFX.playCoin();
+            showFlash(`🪱 Equipped ${name}!`);
+            window.renderBaitShop();
+            updateUI();
+        };
+
+        window.renderDinerShop = () => {
+            const container = document.getElementById('food-catalog-list');
+            container.innerHTML = '';
+            foodCatalog.forEach(item => {
+                const row = document.createElement('div');
+                row.className = 'flex justify-between items-center bg-slate-900/80 p-3 rounded-2xl border border-white/10 text-xs';
+                row.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <span class="text-2xl">${item.icon}</span>
+                        <div>
+                            <div class="text-white font-black">${item.name}</div>
+                            <div class="text-slate-400 text-[10px]">${item.desc}</div>
+                        </div>
+                    </div>
+                    <button onclick="window.buyFood(${item.price}, ${item.energy})" class="bg-gradient-to-r from-orange-500 to-amber-500 hover:brightness-110 text-slate-950 font-black px-4 py-2 rounded-xl">
+                        $${item.price}
+                    </button>
+                `;
+                container.appendChild(row);
+            });
+        };
+
+        window.buyFood = (price, energy) => {
+            if (state.gold < price) {
+                showFlash("⚠️ Not enough Gold!");
+                return;
+            }
+            state.gold -= price;
+            state.food = Math.min(state.maxFood, state.food + energy);
+            AudioFX.playCoin();
+            showFlash(`🍔 Enjoyed meal! +${energy} Energy!`);
+            updateUI();
+        };
+
+        window.renderBoutiqueShop = () => {
+            const container = document.getElementById('clothes-catalog-list');
+            container.innerHTML = '';
+            clothesCatalog.forEach(c => {
+                const isEquipped = state.activeOutfit === c.name;
+                const row = document.createElement('div');
+                row.className = 'flex justify-between items-center bg-slate-900/80 p-3 rounded-2xl border border-white/10 text-xs';
+                row.innerHTML = `
+                    <div class="flex items-center gap-3">
+                        <span class="text-2xl">${c.icon}</span>
+                        <div>
+                            <div class="text-white font-black">${c.name}</div>
+                            <div class="text-pink-300 text-[10px]">${c.perk}</div>
+                        </div>
+                    </div>
+                    <button onclick="window.buyOutfit('${c.name}', ${c.price})" class="px-3.5 py-1.5 rounded-xl text-xs font-black transition-all ${isEquipped ? 'bg-pink-500 text-white' : 'bg-slate-800 hover:bg-slate-700 text-amber-300'}">
+                        ${isEquipped ? 'EQUIPPED' : `$${c.price}`}
+                    </button>
+                `;
+                container.appendChild(row);
+            });
+        };
+
+        window.buyOutfit = (name, price) => {
+            if (state.activeOutfit === name) return;
+            if (state.gold < price) {
+                showFlash("⚠️ Not enough Gold!");
+                return;
+            }
+            state.gold -= price;
+            state.activeOutfit = name;
+
+            if (name === "Highland Captain") state.luckLevel = 1.3;
+            else if (name === "Gold Crown & Cloak") state.luckLevel = 1.8;
+            else if (name === "Mythic Leviathan Armor") { state.luckLevel = 2.5; state.maxFood = 150; }
+            else state.luckLevel = 1.0;
+
+            AudioFX.playCoin();
+            showFlash(`👕 Equipped ${name}! Stats boosted!`);
+            window.renderBoutiqueShop();
+            updateUI();
+        };
+
+        window.buyRod = () => {
+            const cost = 150;
+            if (state.gold < cost) {
+                showFlash("⚠️ Need $150 for Rod Upgrade!");
+                return;
+            }
+            state.gold -= cost;
+            state.rodLevel++;
+            state.greenWidth = Math.min(0.85, state.greenWidth + 0.06);
+            AudioFX.playCoin();
+            showFlash(`🎣 Rod Upgraded to Level ${state.rodLevel}! Green Reel Zone expanded!`);
+            document.getElementById('rod-shop-panel').style.display = 'none';
+            document.getElementById('rod-name').innerText = `🎣 Rod Lv.${state.rodLevel}`;
+            updateUI();
+        };
+
+        window.donateFish = () => {
+            if (state.fishInventory.length === 0) {
+                showFlash("⚠️ Bucket is empty!");
+                return;
+            }
+            state.fishInventory.pop();
+            state.museumCount++;
+            document.getElementById('museum-count').innerText = state.museumCount;
+            AudioFX.playCoin();
+            showFlash("🏛️ Donated fish to the Grand Museum! Honor gained!");
+            updateUI();
+        };
+
+        const minimapCanvas = document.getElementById('minimapCanvas');
+        const mapCtx = minimapCanvas.getContext('2d');
+
+        function drawMinimap() {
+            mapCtx.clearRect(0, 0, 130, 130);
+
+            // Water Lake
+            mapCtx.fillStyle = '#0284c7';
+            mapCtx.beginPath();
+            mapCtx.arc(65, 65, 38, 0, Math.PI * 2);
+            mapCtx.fill();
+
+            // Dock
+            mapCtx.fillStyle = '#b45309';
+            mapCtx.fillRect(63, 65, 4, 18);
+
+            // Shops Plaza
+            mapCtx.fillStyle = '#f59e0b';
+            mapCtx.fillRect(85, 80, 8, 8);
+            mapCtx.fillRect(75, 85, 8, 8);
+            mapCtx.fillRect(95, 85, 8, 8);
+
+            // Motorboat
+            mapCtx.fillStyle = '#ef4444';
+            const bx = 65 + (boatGroup.position.x / 180) * 65;
+            const bz = 65 + (boatGroup.position.z / 180) * 65;
+            mapCtx.fillRect(bx - 3, bz - 3, 6, 6);
+
+            // Player Marker
+            const px = 65 + (player.position.x / 180) * 65;
+            const pz = 65 + (player.position.z / 180) * 65;
+            mapCtx.fillStyle = '#ffffff';
+            mapCtx.beginPath();
+            mapCtx.arc(px, pz, 4.5, 0, Math.PI * 2);
+            mapCtx.fill();
+            mapCtx.strokeStyle = '#000000';
+            mapCtx.lineWidth = 1.5;
+            mapCtx.stroke();
+        }
+
+        // Initialize 3D DOM World Badges
+        function initWorldBadges() {
+            const container = document.getElementById('world-badges-container');
+            worldBadges.forEach(b => {
+                const badge = document.createElement('div');
+                badge.className = 'world-badge glass-panel text-amber-300 font-extrabold text-[11px] px-3 py-1 rounded-full shadow-lg border border-amber-400/40 whitespace-nowrap';
+                badge.innerText = b.text;
+                container.appendChild(badge);
+                b.element = badge;
+            });
+        }
+
+        function updateWorldBadges() {
+            const tempVec = new THREE.Vector3();
+            worldBadges.forEach(b => {
+                tempVec.copy(b.position);
+                tempVec.project(camera);
+
+                // Is in front of camera view frustum
+                if (tempVec.z < 1) {
+                    const x = (tempVec.x * 0.5 + 0.5) * window.innerWidth;
+                    const y = (-(tempVec.y * 0.5) + 0.5) * window.innerHeight;
+                    b.element.style.transform = `translate(-50%, -100%) translate(${x}px, ${y}px)`;
+                    b.element.style.opacity = '1';
+                } else {
+                    b.element.style.opacity = '0';
+                }
+            });
+        }
+
+        let lastTime = performance.now();
+
+        function animate() {
+            requestAnimationFrame(animate);
+            const now = performance.now();
+            const delta = (now - lastTime) / 1000;
+            lastTime = now;
+
+            // Animate Translucent Water Waves
+            const waveTime = now * 0.0022;
+            const wPos = waterGeo.attributes.position;
+            for (let i = 0; i < wPos.count; i++) {
+                const u = wPos.getX(i);
+                const v = wPos.getY(i);
+                const z = Math.sin(u * 0.18 + waveTime) * 0.22 + Math.cos(v * 0.18 + waveTime) * 0.22;
+                wPos.setZ(i, z);
+            }
+            waterGeo.computeVertexNormals();
+            waterGeo.attributes.position.needsUpdate = true;
+
+            // Animate Swimming Fish Silhouettes
+            fishSilhouettes.forEach(f => {
+                f.angle += f.speed;
+                f.mesh.position.x = Math.cos(f.angle) * f.radius;
+                f.mesh.position.z = Math.sin(f.angle) * f.radius;
+                f.mesh.rotation.z = -f.angle;
+            });
+
+            // Player & Motorboat Controls
+            const speed = state.isInBoat ? 0.48 : 0.23;
+            let moveX = 0, moveZ = 0;
+
+            if (keys['KeyW']) moveZ -= 1;
+            if (keys['KeyS']) moveZ += 1;
+            if (keys['KeyA']) moveX -= 1;
+            if (keys['KeyD']) moveX += 1;
+
+            if (moveX !== 0 || moveZ !== 0) {
+                const norm = Math.hypot(moveX, moveZ);
+                moveX = (moveX / norm) * speed;
+                moveZ = (moveZ / norm) * speed;
+
+                const dir = new THREE.Vector3(moveX, 0, moveZ);
+                dir.applyAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
+
+                if (state.isInBoat) {
+                    boatGroup.position.x += dir.x;
+                    boatGroup.position.z += dir.z;
+                    boatGroup.rotation.y = yaw;
+                    player.position.copy(boatGroup.position);
+                    player.position.y += 0.8;
+                } else {
+                    player.position.x += dir.x;
+                    player.position.z += dir.z;
+                    player.rotation.y = yaw;
+                }
+            }
+
+            // Ground Elevation & Dock Collision
+            const terrainY = getTerrainHeight(player.position.x, player.position.z);
+            const isOnDock = Math.abs(player.position.x) < 3.8 && Math.abs(player.position.z - 48) < 13.5;
+            let minSurfaceY = isOnDock ? 0.5 : Math.max(-0.5, terrainY);
+            const minPlayerY = minSurfaceY + 0.5;
+
+            if (!state.isInBoat) {
+                state.playerVelocityY -= 0.015; // Gravity
+                player.position.y += state.playerVelocityY;
+                if (player.position.y <= minPlayerY) {
+                    player.position.y = minPlayerY;
+                    state.playerVelocityY = 0;
+                    state.isGrounded = true;
+                }
+            }
+
+            // Camera View Positioning
+            if (state.isFirstPerson) {
+                camera.position.set(player.position.x, player.position.y + 2.2, player.position.z);
+                camera.rotation.set(pitch, yaw, 0, 'YXZ');
+                playerMesh.visible = false;
+                headMesh.visible = false;
+            } else {
+                const dist = 7.5;
+                camera.position.x = player.position.x + Math.sin(yaw) * dist;
+                camera.position.z = player.position.z + Math.cos(yaw) * dist;
+                camera.position.y = player.position.y + 4.0;
+                camera.lookAt(player.position.x, player.position.y + 1.5, player.position.z);
+                playerMesh.visible = true;
+                headMesh.visible = true;
+            }
+
+            // Render Curved Fishing Line
+            if (bobberGroup.visible) {
+                const rodTipWorld = new THREE.Vector3(0.6, 3.2, -2.5).applyMatrix4(player.matrixWorld);
+                const bobberWorld = bobberGroup.position.clone();
+
+                const posAttr = lineGeo.attributes.position;
+                for (let i = 0; i < 30; i++) {
+                    const t = i / 29;
+                    const lx = THREE.MathUtils.lerp(rodTipWorld.x, bobberWorld.x, t);
+                    const lz = THREE.MathUtils.lerp(rodTipWorld.z, bobberWorld.z, t);
+                    const sag = Math.sin(t * Math.PI) * 1.5;
+                    const ly = THREE.MathUtils.lerp(rodTipWorld.y, bobberWorld.y, t) - sag;
+                    posAttr.setXYZ(i, lx, ly, lz);
+                }
+                posAttr.needsUpdate = true;
+                fishingLine.visible = true;
+            } else {
+                fishingLine.visible = false;
+            }
+
+            // Check Interaction Proximities
+            const distBoat = player.position.distanceTo(boatGroup.position);
+            state.nearBoat = distBoat < 4.8;
+
+            const distMarket = player.position.distanceTo(new THREE.Vector3(MAIN_SHOP_POS.x, 0, MAIN_SHOP_POS.z));
+            const distBait = player.position.distanceTo(new THREE.Vector3(MAIN_SHOP_POS.x - 14, 0, MAIN_SHOP_POS.z + 4));
+            const distRod = player.position.distanceTo(new THREE.Vector3(MAIN_SHOP_POS.x + 14, 0, MAIN_SHOP_POS.z + 4));
+            const distDiner = player.position.distanceTo(new THREE.Vector3(HILL_TOWN_POS.x, 0, HILL_TOWN_POS.z));
+            const distBoutique = player.position.distanceTo(new THREE.Vector3(HILL_TOWN_POS.x + 16, 0, HILL_TOWN_POS.z - 8));
+            const distMuseum = player.position.distanceTo(new THREE.Vector3(0, 0, -68));
+
+            let promptText = null;
+            state.nearShop = null;
+            state.nearMuseum = false;
+
+            if (distMarket < 5.5) { state.nearShop = 'market'; promptText = "Press SPACE for Fish Market"; }
+            else if (distBait < 5.5) { state.nearShop = 'bait'; promptText = "Press SPACE for Bait Shop"; }
+            else if (distRod < 5.5) { state.nearShop = 'rod'; promptText = "Press SPACE for Rod Crafting"; }
+            else if (distDiner < 5.5) { state.nearShop = 'diner'; promptText = "Press SPACE for Hillside Diner"; }
+            else if (distBoutique < 5.5) { state.nearShop = 'boutique'; promptText = "Press SPACE for Boutique"; }
+            else if (distMuseum < 6.5) { state.nearMuseum = true; promptText = "Press SPACE for Grand Museum"; }
+            else if (state.nearBoat && !state.isInBoat) { promptText = "Press R to Board Motorboat"; }
+            else if (player.position.length() < 60 || state.isInBoat) { promptText = "Press SPACE to Cast Fishing Rod"; }
+
+            const promptEl = document.getElementById('interaction-prompt');
+            if (promptText && !state.isFishing && !state.isBossFishing) {
+                promptEl.innerText = promptText;
+                promptEl.style.display = 'block';
+            } else {
+                promptEl.style.display = 'none';
+            }
+
+            // Minigame Tick Mechanics
+            if (state.isFishing) {
+                state.fishTimer += delta;
+                if (state.fishTimer > 2.2) {
+                    state.fishTarget = 0.20 + Math.random() * 0.6;
+                    state.fishTimer = 0;
+                }
+                state.fishPos += (state.fishTarget - state.fishPos) * 0.035;
+
+                if (keys['Space']) {
+                    state.greenVel += 0.006;
+                } else {
+                    state.greenVel -= 0.006;
+                }
+                state.greenVel *= 0.86;
+                state.greenPos += state.greenVel;
+                state.greenPos = Math.max(0, Math.min(1 - state.greenWidth, state.greenPos));
+
+                const isOverlapping = (state.fishPos >= state.greenPos) && (state.fishPos <= state.greenPos + state.greenWidth);
+
+                if (isOverlapping) {
+                    state.fishingProgress = Math.min(100, state.fishingProgress + 0.85);
+                } else {
+                    state.fishingProgress = Math.max(0, state.fishingProgress - 0.08);
+                }
+
+                document.getElementById('reel-green-zone').style.left = `${state.greenPos * 100}%`;
+                document.getElementById('reel-green-zone').style.width = `${state.greenWidth * 100}%`;
+                document.getElementById('reel-fish-line').style.left = `${state.fishPos * 100}%`;
+                document.getElementById('fishing-bar').style.width = `${state.fishingProgress}%`;
+                document.getElementById('fishing-progress-percent').innerText = `${Math.round(state.fishingProgress)}%`;
+
+                if (state.fishingProgress >= 100) {
+                    catchFish(false);
+                }
+            }
+
+            if (state.isBossFishing) {
+                state.bossTimer -= delta * 35;
+                document.getElementById('boss-timer-text').innerText = `${(state.bossTimer / 60).toFixed(1)}s`;
+
+                if (keys['Space']) {
+                    state.bossZonePos = Math.min(0.78, state.bossZonePos + 0.02);
+                } else {
+                    state.bossZonePos = Math.max(0.0, state.bossZonePos - 0.02);
+                }
+
+                state.bossFishPos += Math.sin(now * 0.003) * 0.007;
+                document.getElementById('boss-player-zone').style.left = `${state.bossZonePos * 100}%`;
+                document.getElementById('boss-fish-cursor').style.left = `${state.bossFishPos * 100}%`;
+
+                if (Math.abs(state.bossZonePos - state.bossFishPos) < 0.22) {
+                    state.myBossDamage = Math.min(100, state.myBossDamage + 0.65);
+                }
+                document.getElementById('boss-progress-fill').style.width = `${state.myBossDamage}%`;
+
+                if (state.myBossDamage >= 100) {
+                    catchFish(true);
+                } else if (state.bossTimer <= 0) {
+                    showFlash("💥 The Ancient Leviathan broke free!");
+                    window.endFishing();
+                }
+            }
+
+            drawMinimap();
+            updateWorldBadges();
+            renderer.render(scene, camera);
+        }
+
+        window.onload = () => {
+            initWorldBadges();
+            updateUI();
+            animate();
+        };
+
+        window.addEventListener('resize', () => {
+            camera.aspect = window.innerWidth / window.innerHeight;
+            camera.updateProjectionMatrix();
+            renderer.setSize(window.innerWidth, window.innerHeight);
+        });
+    </script>
+</body>
+</html>
